@@ -1,3 +1,5 @@
-phable==0.1.14a1
+phable==0.1.14
 python-dotenv
 pandas
+scikit-learn
+matplotlib
