@@ -5,9 +5,9 @@ from datetime import date
 from phable.client import Client, CommitFlag
 from phable.kinds import DateRange, Grid, Ref, Number, Marker
 import matplotlib.pyplot as plt
+from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 dotenv.load_dotenv()
 uri = os.environ["URI"]
@@ -17,7 +17,7 @@ password = os.environ["PASSWORD"]
 with Client(uri, username, password) as client:
 
     ml_models = client.read(
-        'mlModel and dis=="ft - 15min"'
+        'mlModel and dis=="mlwg model"'
     )  # ml_models = client.read("mlModel")
 
     ml_model = ml_models.rows[0]  # for ml_model in ml_models.rows:
@@ -43,57 +43,67 @@ with Client(uri, username, password) as client:
     df = df.reset_index()
     print(df)
 
-    X = df[[df.columns[0]]]
-    y = df[df.columns[1:]]
-    print(X)
-    print(y)
+    target = df.columns[1]
+    print(target)
 
+    # Extract useful features from 'Timestamp'
+    df["hour"] = df["Timestamp"].dt.hour
+    df["day"] = df["Timestamp"].dt.day
+    df["month"] = df["Timestamp"].dt.month
+    df["dayofweek"] = df["Timestamp"].dt.dayofweek
+
+    # Drop the original 'Timestamp' column
+    xy = df.drop(columns=["Timestamp"])
+
+    # 4. Feature Selection/Engineering
+    # Define features (X) and target (y)
+    X = xy.drop(columns=[target])
+    y = xy[target]
+
+    # 5. Train-Test Split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
-    model = RandomForestClassifier(random_state=42)
 
-    # Unknown label type: continuous. Maybe you are trying to fit a classifier, which expects discrete classes on a regression target with continuous values.
+    # 6. Train the Model
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
     model.fit(X_train, y_train)
 
+    # 7. Make Predictions
     y_pred = model.predict(X_test)
-    accuracy = accuracy_score(y_test, y_pred)
-    print(f"Accuracy: {accuracy}")
 
+    # Evaluate the Model
+    mse = mean_squared_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+    print(f"Mean Squared Error: {mse}")
+    print(f"R^2 Score: {r2}")
+
+    params = model.get_params()
+    params = [p for p in params if p != None]
+
+    ml_model["mlModelMetrics"] = {"mse": mse, "r2": r2}
+    ml_model["mlModelParameters"] = params
+    response: Grid = client.commit([ml_model], CommitFlag.UPDATE, False)
+
+    pred = model.predict(X)
+    df["prediction"] = pred
+    df = df[["Timestamp", "prediction"]]
+
+    ml_prediction_point = client.read(
+        f'mlPrediction and his and mlModelRef == @{ml_model["id"].val}'
+    )
+
+    his_rows = []
+    for index, row in df.iterrows():
+        his_rows.append(
+            {"ts": row["Timestamp"].to_pydatetime(), "v0": Number(row["prediction"])}
+        )
+    client.his_write_by_ids([ml_prediction_point.rows[0]["id"]], his_rows)
+
+    # Plot actual vs predicted
     plt.figure(figsize=(10, 6))
-    plt.plot(range(len(y_test)), y_test, label="Measured", color="b")
-    plt.plot(range(len(y_test)), y_pred, label="Predicted", color="r", linestyle="--")
-    plt.xlabel("Index")
-    plt.ylabel("Class")
-    plt.title("Measured vs. Predicted Values")
-    plt.legend()
-    plt.grid(True)
+    plt.scatter(y_test, y_pred, alpha=0.5)
+    plt.xlabel("Actual")
+    plt.ylabel("Predicted")
+    plt.title("Actual vs Predicted")
     plt.show()
-
-    # data = [{"dis": "TestRec", "testing": Marker(), "pytest": Marker()}]
-    # response: Grid = client.commit(data, CommitFlag.ADD, False)
-
-    # points = client.read('point and tz=="Prague" and (unit == "kW" or unit == "°C")', 2)
-    # grid = client.his_read(points, DateRange(date(2020, 1, 1), date(2020, 2, 1)))
-    # df = grid.to_pandas()
-    # df.dropna(inplace=True)
-    # dis_to_cn = {
-    #    str(col_grid["meta"]["id"]): col_grid["name"]
-    #    for col_grid in filter(lambda x: x["name"] != "ts", grid.cols)
-    # }
-    # df.rename(columns=dis_to_cn, inplace=True)
-    #
-    # df["prediction"] = df["v0"] + df["v1"]
-    #
-    # meta = {"ver": "3.0", "id": Ref("p:energyTwinForge:r:2d44cd91-c8fd065c")}
-    # cols = [{"name": "ts"}, {"name": "val"}]
-    # rows = []
-    # for index, row in df.iterrows():
-    #    rows.append({"ts": index.to_pydatetime(), "val": Number(row["prediction"])})
-    # grid = Grid(meta, cols, rows)
-    # client.his_write(grid)
-    #
-    ## client.eval
-    #
-    # print(df)
-    # print(df.info())
