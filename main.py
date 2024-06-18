@@ -32,9 +32,9 @@ class MLData:
 def load_env_variables() -> dict[str, str]:
     dotenv.load_dotenv()
     return {
-        "uri": os.environ["URI"],
-        "username": os.environ["USERNAME"],
-        "password": os.environ["PASSWORD"],
+        "uri": os.environ["HAYSTACK_URI"],
+        "username": os.environ["HAYSTACK_USERNAME"],
+        "password": os.environ["HAYSTACK_PASSWORD"],
     }
 
 
@@ -69,6 +69,7 @@ def fetch_data(client: Client, ml_model: MLModel) -> MLData:
 def preprocess_data(ml_data: MLData) -> Tuple[pd.DataFrame, str]:
     ml_data.to_dataframe()
     df = ml_data.df
+    df.dropna(inplace=True)
     return df.drop(columns=["Timestamp"]), df.columns[1]
 
 
@@ -112,12 +113,21 @@ def write_predictions(
     client.his_write_by_ids([ml_prediction_point.rows[0]["id"]], his_rows)
 
 
-def plot_results(y_test: pd.Series, y_pred: pd.Series) -> None:
-    plt.figure(figsize=(10, 6))
-    plt.scatter(y_test, y_pred, alpha=0.5)
-    plt.xlabel("Actual")
-    plt.ylabel("Predicted")
-    plt.title("Actual vs Predicted")
+def plot_results(
+    model: RandomForestRegressor, X: pd.DataFrame, df: pd.DataFrame
+) -> None:
+    import matplotlib.pyplot as plt
+
+    pred = model.predict(X)
+    df["prediction"] = pred
+    plt.figure(figsize=(10, 5))
+    plt.plot(df["Timestamp"], df["prediction"], label="Prediction")
+    plt.plot(df["Timestamp"], df[df.columns[1]], label=df.columns[1])
+    plt.xlabel("Timestamp")
+    plt.ylabel("Value")
+    plt.grid(True)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
     plt.show()
 
 
@@ -138,7 +148,7 @@ def main() -> None:
         mse, r2, y_pred = evaluate_model(model, X_test, y_test)
         update_ml_model(client, ml_model, mse, r2)
         write_predictions(client, model, X, ml_data.df, ml_model)
-        plot_results(y_test, y_pred)
+        plot_results(model, X, ml_data.df)
 
 
 if __name__ == "__main__":
