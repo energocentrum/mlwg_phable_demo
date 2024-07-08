@@ -1,5 +1,6 @@
-phable==0.1.14
+phable
 python-dotenv
 pandas
 scikit-learn
 matplotlib
+pyarrow

@@ -20,15 +20,6 @@ class MLModel:
     tags: dict[str, Any]
 
 
-@dataclass
-class MLData:
-    data: Grid
-    df: pd.DataFrame = field(init=False)
-
-    def to_dataframe(self) -> None:
-        self.df = self.data.to_pandas().reset_index()
-
-
 def load_env_variables() -> dict[str, str]:
     dotenv.load_dotenv()
     return {
@@ -61,14 +52,12 @@ def read_ml_model(client: Client, filter: str) -> MLModel:
     )
 
 
-def fetch_data(client: Client, ml_model: MLModel) -> MLData:
+def fetch_data(client: Client, ml_model: MLModel) -> pd.DataFrame:
     data = client.his_read_by_ids(ml_model.points, ml_model.identification_period)
-    return MLData(data)
+    return data.to_pandas().reset_index()
 
 
-def preprocess_data(ml_data: MLData) -> Tuple[pd.DataFrame, str]:
-    ml_data.to_dataframe()
-    df = ml_data.df
+def preprocess_data(df: pd.DataFrame) -> Tuple[pd.DataFrame, str]:
     df.dropna(inplace=True)
     return df.drop(columns=["Timestamp"]), df.columns[1]
 
@@ -103,9 +92,9 @@ def write_predictions(
     pred = model.predict(X)
     df["prediction"] = pred
     df = df[["Timestamp", "prediction"]]
-    ml_prediction_point = client.read(
-        f"mlPrediction and his and mlModelRef == @{ml_model.id.val}"
-    )
+    ml_prediction_point = client.read(f"ml and his and modelRef == @{ml_model.id.val}")
+    if not any(ml_prediction_point.rows):
+        return
     his_rows = [
         {"ts": row["Timestamp"].to_pydatetime(), "v0": Number(row["prediction"])}
         for index, row in df.iterrows()
@@ -134,7 +123,7 @@ def plot_results(
 def main() -> None:
     env_vars = load_env_variables()
     with Client(env_vars["uri"], env_vars["username"], env_vars["password"]) as client:
-        ml_model = read_ml_model(client, 'mlModel and dis=="mlwg model"')
+        ml_model = read_ml_model(client, "mlModel and mlwgPhableDemo")
         ml_data = fetch_data(client, ml_model)
         xy, target = preprocess_data(ml_data)
 
@@ -147,8 +136,8 @@ def main() -> None:
         model = train_model(X_train, y_train)
         mse, r2, y_pred = evaluate_model(model, X_test, y_test)
         update_ml_model(client, ml_model, mse, r2)
-        write_predictions(client, model, X, ml_data.df, ml_model)
-        plot_results(model, X, ml_data.df)
+        write_predictions(client, model, X, ml_data, ml_model)
+        plot_results(model, X, ml_data)
 
 
 if __name__ == "__main__":
