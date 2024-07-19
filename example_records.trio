@@ -1,0 +1,65 @@
+id:@2e2cd829-5c02eeab
+dis:MLWG PHABLE Site
+site
+tz:UTC
+---
+id:@2e2cd829-8f6e0a9f
+dis:MLWG PHABLE Equip
+equip
+siteRef:@2e2cd829-5c02eeab
+---
+id:@2d269048-0d827cf9
+dis:MLWG PHABLE Input Point
+elec
+his
+point
+sensor
+kind:Number
+unit:°C
+equipRef:@2e2cd829-8f6e0a9f
+siteRef:@2e2cd829-5c02eeab
+tz:UTC
+---
+id:@2e2cd829-bea309a9
+dis:MLWG PHABLE Output Point
+elec
+his
+point
+sensor
+kind:Number
+unit:kW
+equipRef:@2e2cd829-8f6e0a9f
+siteRef:@2e2cd829-5c02eeab
+tz:UTC
+---
+id:@2e2cd829-b181399a
+dis:MLWG PHABLE Output Var
+mlVar
+mlVarPoint:@2e2cd829-bea309a9
+---
+id:@2e2cd829-8fe2be5e
+dis:MLWG PHABLE Input Var
+mlVar
+mlVarPoint:@2d269048-0d827cf9
+---
+id:@2e2cd829-28c8fc46
+dis:MLWG PHABLE Model
+model
+mlModel
+mlwgPhableDemo
+mlIdentificationPeriod:Span("2023-01-01,2023-02-01")
+mlInputVarRefs:[@2e2cd829-8fe2be5e]
+mlOutputVarRef:@2e2cd829-b181399a
+--
+id:@2df5a426-704c4ace
+dis:MLWG PHABLE Prediction
+his
+point
+ml
+kind:Number
+unit:"kW"
+modelRef:@2e2cd829-28c8fc46
+equipRef:@2e2cd829-8f6e0a9f
+siteRef:@2e2cd829-5c02eeab
+tz:UTC
+

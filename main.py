@@ -4,7 +4,7 @@ from typing import Any, Tuple
 import dotenv
 from datetime import date
 import pandas as pd
-from phable.client import Client, CommitFlag
+from phable.client import Client, CommitFlag, HaystackReadOpUnknownRecError
 from phable.kinds import DateRange, Grid, Ref, Number, XStr
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, r2_score
@@ -33,23 +33,15 @@ def read_ml_model(client: Client, filter: str) -> MLModel:
     ml_models = client.read(filter)
     ml_model = ml_models.rows[0]
     output_var_ref = ml_model.get("mlOutputVarRef", None)
-    input_var_refs = [
-        Ref(ref["val"], ref["dis"]) for ref in ml_model.get("mlInputVarRefs", None)
-    ]
+    input_var_refs = [Ref(ref["val"], ref["dis"]) for ref in ml_model.get("mlInputVarRefs", None)]
     identification_period_span: XStr = ml_model["mlIdentificationPeriod"]
     span_dates = identification_period_span.val.split(",")
-    identification_period = DateRange(
-        date.fromisoformat(span_dates[0]), date.fromisoformat(span_dates[1])
-    )
+    identification_period = DateRange(date.fromisoformat(span_dates[0]), date.fromisoformat(span_dates[1]))
 
     ml_vars = client.read_by_ids([output_var_ref] + input_var_refs)
-    ml_var_point_refs = [
-        var["mlVarPoint"] for var in ml_vars.rows if var.get("mlVarPoint")
-    ]
+    ml_var_point_refs = [var["mlVarPoint"] for var in ml_vars.rows if var.get("mlVarPoint")]
 
-    return MLModel(
-        ml_model.get("id"), ml_var_point_refs, identification_period, ml_model
-    )
+    return MLModel(ml_model.get("id"), ml_var_point_refs, identification_period, ml_model)
 
 
 def fetch_data(client: Client, ml_model: MLModel) -> pd.DataFrame:
@@ -89,22 +81,24 @@ def write_predictions(
     df: pd.DataFrame,
     ml_model: MLModel,
 ) -> None:
-    pred = model.predict(X)
-    df["prediction"] = pred
-    df = df[["Timestamp", "prediction"]]
-    ml_prediction_point = client.read(f"ml and his and modelRef == @{ml_model.id.val}")
-    if not any(ml_prediction_point.rows):
+    ml_prediction_point_id = None
+
+    try:
+        ml_prediction_point = client.read(f"ml and his and modelRef == @{ml_model.id.val}", 1)
+        ml_prediction_point_id = ml_prediction_point.rows[0]["id"]
+    except HaystackReadOpUnknownRecError:
+        print("Prediction write skipped, point is missing")
         return
+
+    df["prediction"] = model.predict(X)
+    df = df[["Timestamp", "prediction"]]
     his_rows = [
-        {"ts": row["Timestamp"].to_pydatetime(), "v0": Number(row["prediction"])}
-        for index, row in df.iterrows()
+        {"ts": row["Timestamp"].to_pydatetime(), "val": Number(row["prediction"])} for index, row in df.iterrows()
     ]
-    client.his_write_by_ids([ml_prediction_point.rows[0]["id"]], his_rows)
+    client.his_write_by_ids(ml_prediction_point_id, his_rows)
 
 
-def plot_results(
-    model: RandomForestRegressor, X: pd.DataFrame, df: pd.DataFrame
-) -> None:
+def plot_results(model: RandomForestRegressor, X: pd.DataFrame, df: pd.DataFrame) -> None:
     import matplotlib.pyplot as plt
 
     pred = model.predict(X)
@@ -130,9 +124,7 @@ def main() -> None:
         X = xy.drop(columns=[target])
         y = xy[target]
 
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
         model = train_model(X_train, y_train)
         mse, r2, y_pred = evaluate_model(model, X_test, y_test)
         update_ml_model(client, ml_model, mse, r2)
