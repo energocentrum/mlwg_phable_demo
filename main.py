@@ -117,7 +117,9 @@ def plot_results(model: RandomForestRegressor, X: pd.DataFrame, df: pd.DataFrame
 def main() -> None:
     env_vars = load_env_variables()
     with Client(env_vars["uri"], env_vars["username"], env_vars["password"]) as client:
-        ml_model = read_ml_model(client, "mlModel and mlwgPhableDemo")
+        ml_model = read_ml_model(
+            client, "mlModel and mlwgPhableDemo and mlOutputVarRef and mlInputVarRefs and mlIdentificationPeriod"
+        )
         ml_data = fetch_data(client, ml_model)
         xy, target = preprocess_data(ml_data)
 
